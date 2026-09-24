@@ -39,4 +39,12 @@ export default function RootLayout({
       </body>
     </html>
   );
-}
+} 
+export const metadata = {
+  title: "Nutriční Ambulance",
+  description: "Klinická výživa & Metabolická diagnostika",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+};
