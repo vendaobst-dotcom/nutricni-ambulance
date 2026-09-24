@@ -14,7 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Nutriční Ambulance",
-  description: "Klinická výživa a metabolická diagnostika",
+  description: "Klinická výživa & Metabolická diagnostika",
+  icons: {
+    icon: "/favicon.png",          // Odkaz na faviconu v public složce
+    apple: "/apple-touch-icon.png",  // Odkaz na mobilní ikonu v public složce
+  },
 };
 
 // TENTO ŘÁDEK OPRAVUJE MOBILNÍ ZOBRAZENÍ
@@ -39,12 +43,4 @@ export default function RootLayout({
       </body>
     </html>
   );
-} 
-export const metadata = {
-  title: "Nutriční Ambulance",
-  description: "Klinická výživa & Metabolická diagnostika",
-  icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
-  },
-};
+}
