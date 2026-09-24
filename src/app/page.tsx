@@ -1312,7 +1312,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans print:bg-white">
-      <header className="bg-[#1F2937] text-white border-b border-teal-600/30 px-8 py-5 flex items-center justify-between shadow-md print:hidden sticky top-0 z-40">
+      <header className="bg-[#1F2937] text-white border-b border-teal-600/30 px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4 shadow-md print:hidden sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="bg-[#0D9488] p-2.5 rounded-xl text-white shadow-inner">
             <Heart className="w-6 h-6" />
