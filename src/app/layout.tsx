@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Klinická výživa & Metabolická diagnostika",
   icons: {
     icon: "/favicon.png",          // Odkaz na faviconu v public složce
-    apple: "/apple-touch-icon.png",  // Odkaz na mobilní ikonu v public složce
+    apple: "/favicon.png",         // Odkaz na mobilní ikonu (ukazuje na stejný soubor)
   },
 };
 
