@@ -1350,7 +1350,8 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-8 print:p-0 print:max-w-none">
+      {/* ZDE UPRAVENO: Přidán responsive kontejner w-full px-4 sm:px-6 lg:px-8 py-8 */}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0 print:max-w-none">
          
         {birthdayPatients.length > 0 && (
           <div className="mb-6 p-4 bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-teal-500/10 border border-pink-200 rounded-2xl shadow-sm flex items-center justify-between print:hidden">
@@ -1628,8 +1629,8 @@ export default function Home() {
                       <p className="text-xs text-gray-600">Nahrajte skeny, výsledky odběrů nebo zprávy od jiných lékařů pro tohoto pacienta.</p>
                     </div>
                     <label className="bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-sm transition-colors">
-                      {uploadingDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                      <span>{uploadingDoc ? "Nahrávám..." : "Nahrát zprávu"}</span>
+                      {uploadingMedDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      <span>{uploadingMedDoc ? "Nahrávám..." : "Nahrát zprávu"}</span>
                       <input type="file" onChange={handleUploadPatientMedDoc} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg" />
                     </label>
                   </div>
