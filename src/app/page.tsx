@@ -56,7 +56,8 @@ import {
   TrendingUp,
   ChevronRight,
   ArrowLeft,
-  Calculator
+  Calculator,
+  LineChart
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -164,6 +165,14 @@ interface AuditLog {
   action_type: string;
   description: string;
   created_at: string;
+}
+
+interface ABPMPoint {
+  time: string;
+  sys: number;
+  dia: number;
+  hr: number;
+  isNight: boolean;
 }
 
 export default function Home() {
@@ -278,7 +287,36 @@ export default function Home() {
   const [calcHeight, setCalcHeight] = useState<string>("175");
   const [calcBodyFat, setCalcBodyFat] = useState<string>("");
   const [calcActivity, setCalcActivity] = useState<number>(1.375);
-  const [calcGoal, setCalcGoal] = useState<number>(0); // 0 = Udržování, negative = redukce, positive = nabírání
+  const [calcGoal, setCalcGoal] = useState<number>(0);
+
+  // Stavy pro ABPM Diagnostický Modul
+  const [abpmDaySys, setAbpmDaySys] = useState<string>("138");
+  const [abpmDayDia, setAbpmDayDia] = useState<string>("86");
+  const [abpmDayHr, setAbpmDayHr] = useState<string>("74");
+  
+  const [abpmNightSys, setAbpmNightSys] = useState<string>("118");
+  const [abpmNightDia, setAbpmNightDia] = useState<string>("72");
+  const [abpmNightHr, setAbpmNightHr] = useState<string>("62");
+
+  const [abpmDayLoad, setAbpmDayLoad] = useState<string>("35");
+  const [abpmNightLoad, setAbpmNightLoad] = useState<string>("20");
+  const [abpmNotes, setAbpmNotes] = useState<string>("Holter snášen dobře. Pacient udává běžný denní režim a spánek od 23:00 do 06:30.");
+
+  // Ukázková 24h křivka pro vizualizaci
+  const [abpmGraphPoints] = useState<ABPMPoint[]>([
+    { time: "08:00", sys: 135, dia: 84, hr: 72, isNight: false },
+    { time: "10:00", sys: 142, dia: 88, hr: 78, isNight: false },
+    { time: "12:00", sys: 139, dia: 85, hr: 75, isNight: false },
+    { time: "14:00", sys: 145, dia: 90, hr: 82, isNight: false },
+    { time: "16:00", sys: 136, dia: 83, hr: 71, isNight: false },
+    { time: "18:00", sys: 138, dia: 86, hr: 74, isNight: false },
+    { time: "20:00", sys: 132, dia: 82, hr: 69, isNight: false },
+    { time: "22:00", sys: 125, dia: 78, hr: 65, isNight: true },
+    { time: "00:00", sys: 118, dia: 72, hr: 61, isNight: true },
+    { time: "02:00", sys: 114, dia: 70, hr: 58, isNight: true },
+    { time: "04:00", sys: 116, dia: 71, hr: 60, isNight: true },
+    { time: "06:00", sys: 122, dia: 76, hr: 64, isNight: false },
+  ]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -673,8 +711,7 @@ export default function Home() {
         title: file.name,
         category: activeDocCategory,
         file_url: base64Url,
-        file_size: `${(file.size / 1024).toFixed(1)} KB`,
-        uploaded_by: session?.user?.email || "Neznámý"
+        file_size: `${(file.size / 1024).toFixed(1)} KB`
       };
 
       const { error } = await supabase.from("clinic_documents").insert([newDoc]);
@@ -1196,7 +1233,6 @@ export default function Home() {
   const cAge = parseFloat(calcAge) || 0;
   const cFat = parseFloat(calcBodyFat) || 0;
 
-  // BMR Mifflin-St Jeor
   let bmrMifflin = 0;
   if (cWeight > 0 && cHeight > 0 && cAge > 0) {
     if (calcGender === "Muž") {
@@ -1206,7 +1242,6 @@ export default function Home() {
     }
   }
 
-  // BMR Katch-McArdle (pokud je znám tuk %)
   let bmrKatch = 0;
   if (cWeight > 0 && cFat > 0) {
     const lbm = cWeight * (1 - cFat / 100);
@@ -1217,13 +1252,47 @@ export default function Home() {
   const tdee = activeBmr * calcActivity;
   const targetCalories = tdee + calcGoal;
 
-  // Makroživiny: Bílkoviny ~ 2g/kg, Tuky ~ 25% kalorií, Sacharidy zbytek
   const calcProteinsGrams = Math.round(cWeight * 2.0);
   const calcProteinsKcal = calcProteinsGrams * 4;
   const calcFatsKcal = Math.round(targetCalories * 0.25);
   const calcFatsGrams = Math.round(calcFatsKcal / 9);
   const calcCarbsKcal = Math.max(0, targetCalories - calcProteinsKcal - calcFatsKcal);
   const calcCarbsGrams = Math.round(calcCarbsKcal / 4);
+
+  // VÝPOČTY PRO ABPM DIAGNOSTICKÝ MODUL
+  const dSys = parseFloat(abpmDaySys) || 0;
+  const dDia = parseFloat(abpmDayDia) || 0;
+  const dHr = parseFloat(abpmDayHr) || 0;
+
+  const nSys = parseFloat(abpmNightSys) || 0;
+  const nDia = parseFloat(abpmNightDia) || 0;
+  const nHr = parseFloat(abpmNightHr) || 0;
+
+  // Průměry za 24h (vážený průměr 16h den + 8h noc)
+  const avg24Sys = Math.round((dSys * 16 + nSys * 8) / 24);
+  const avg24Dia = Math.round((dDia * 16 + nDia * 8) / 24);
+  const avg24Hr = Math.round((dHr * 16 + nHr * 8) / 24);
+
+  // Dipper status (noční pokles systoly v %)
+  const dipSysPercent = dSys > 0 ? parseFloat((((dSys - nSys) / dSys) * 100).toFixed(1)) : 0;
+  
+  let dipperCategory = "Dipper (Fyziologický pokles 10–20 %)";
+  let dipperColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
+
+  if (dipSysPercent < 0) {
+    dipperCategory = "Riser / Reverse Dipper (Tlak v noci stoupá – vysoké riziko!)";
+    dipperColor = "text-purple-800 bg-purple-100 border-purple-300 font-black";
+  } else if (dipSysPercent < 10) {
+    dipperCategory = "Non-Dipper (Nedostatečný pokles <10 % – kardiovaskulární riziko)";
+    dipperColor = "text-amber-800 bg-amber-50 border-amber-300 font-bold";
+  } else if (dipSysPercent > 20) {
+    dipperCategory = "Extreme Dipper (Nadměrný pokles >20 %)";
+    dipperColor = "text-blue-800 bg-blue-50 border-blue-200 font-semibold";
+  }
+
+  // Pulzní tlak (Pulse Pressure)
+  const ppDay = dSys - dDia;
+  const ppNight = nSys - nDia;
 
   const handlePrint = () => {
     logAction("TISK", `Vytištěn dokument / zpráva.`);
@@ -1424,6 +1493,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* HORNÍ LIŠTA ZÁLOŽEK */}
         <div className="flex flex-wrap border-b border-gray-200 mb-8 gap-2 print:hidden">
           <button
             onClick={() => { setActiveTab("patients"); setShowTrash(false); setViewingPatientId(null); }}
@@ -1435,6 +1505,19 @@ export default function Home() {
           >
             <Users className="w-4 h-4" /> Kartotéka Pacientů
           </button>
+          
+          {/* NOVÁ ZÁLOŽKA PRO ABPM DIAGNOSTIKU */}
+          <button
+            onClick={() => { setActiveTab("abpm"); setViewingPatientId(null); }}
+            className={`flex items-center gap-2 pb-3 px-4 font-bold text-sm transition-all border-b-2 rounded-t-xl ${
+              activeTab === "abpm"
+                ? "border-red-600 text-red-700 bg-red-50/50 shadow-sm"
+                : "border-transparent text-red-600/80 hover:text-red-700 hover:bg-red-50/30"
+            }`}
+          >
+            <Activity className="w-4 h-4 text-red-600" /> 🫀 ABPM Diagnostika
+          </button>
+
           <button
             onClick={() => { setActiveTab("calculator"); setViewingPatientId(null); }}
             className={`flex items-center gap-2 pb-3 px-4 font-semibold text-sm transition-all border-b-2 rounded-t-xl ${
@@ -1527,6 +1610,15 @@ export default function Home() {
                 <ArrowLeft className="w-4 h-4" /> Zpět do kartotéky
               </button>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setSelectedPatientId(viewingPatient.id);
+                    setActiveTab("abpm");
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl border border-red-200 transition-colors"
+                >
+                  <Activity className="w-4 h-4 text-red-600" /> Vyhodnotit ABPM
+                </button>
                 <button
                   onClick={() => handleOpenEditModal(viewingPatient)}
                   className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl border border-blue-200 transition-colors"
@@ -1720,6 +1812,298 @@ export default function Home() {
           </div>
         ) : (
           <>
+            {/* SEKCIE KLINICKÉHO ABPM DIAGNOSTICKÉHO MODULU */}
+            {activeTab === "abpm" && (
+              <div className="space-y-6 max-w-6xl mx-auto font-sans print:max-w-none print:w-full">
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl relative overflow-hidden print:shadow-none print:border-none print:p-0">
+                  
+                  {/* Hlavička modulu */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-gray-200 gap-4 print:hidden">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-red-100 text-red-600 rounded-2xl shadow-inner">
+                        <Activity className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">ABPM Diagnostika & 24h Tlakový Holter</h2>
+                        <p className="text-xs text-gray-500">Komplexní vyhodnocení tlakové zátěže, dipper statusu a hemodynamiky</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-64">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Hledat pacienta..."
+                          value={globalPatientSearch}
+                          onChange={(e) => setGlobalPatientSearch(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500"
+                        />
+                      </div>
+                      <select 
+                        value={selectedPatientId} 
+                        onChange={(e) => setSelectedPatientId(e.target.value)}
+                        className="bg-gray-50 border border-gray-300 rounded-xl p-2 text-xs font-bold text-gray-900 focus:ring-2 focus:ring-red-500 w-56"
+                      >
+                        {searchablePatients.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} (RČ: {p.birth_number})</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handlePrint}
+                        className="bg-[#1F2937] hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-xl text-xs transition-colors flex items-center gap-2 shadow-md whitespace-nowrap"
+                      >
+                        <Printer className="w-4 h-4" /> Tisk protokolu
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Zobrazí se při tisku */}
+                  <div className="hidden print:block border-b-2 border-gray-900 pb-4 mb-6">
+                    <h1 className="text-lg font-bold uppercase">PROTOKOL 24-HODINOVÉHO MONITOROVÁNÍ KREVNÍHO TLAKU (ABPM)</h1>
+                    <p className="text-xs text-gray-600">Nutriční & Metabolická Ambulance | Pardubice</p>
+                    {selectedPatient && (
+                      <div className="mt-3 text-xs grid grid-cols-2 gap-2 border p-3 rounded-lg bg-gray-50">
+                        <div><strong>Pacient:</strong> {selectedPatient.name}</div>
+                        <div><strong>Rodné číslo:</strong> {selectedPatient.birth_number}</div>
+                        <div><strong>Pojišťovna:</strong> {selectedPatient.insurance_company}</div>
+                        <div><strong>Datum měření:</strong> {new Date().toLocaleDateString("cs-CZ")}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedPatient ? (
+                    <div className="space-y-6">
+                      
+                      {/* Vstupní formulář dat ABPM */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-gray-50 p-6 rounded-2xl border border-gray-200 print:hidden">
+                        
+                        {/* DENNÍ HODNOTY */}
+                        <div className="space-y-3 bg-amber-50/70 p-4.5 rounded-xl border border-amber-200">
+                          <span className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            ☀️ DENNÍ FÁZE (BDĚNÍ: 08:00 – 22:00)
+                          </span>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">ST (mmHg)</label>
+                              <input
+                                type="number"
+                                value={abpmDaySys}
+                                onChange={(e) => setAbpmDaySys(e.target.value)}
+                                className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-amber-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">DT (mmHg)</label>
+                              <input
+                                type="number"
+                                value={abpmDayDia}
+                                onChange={(e) => setAbpmDayDia(e.target.value)}
+                                className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-amber-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">Puls (/min)</label>
+                              <input
+                                type="number"
+                                value={abpmDayHr}
+                                onChange={(e) => setAbpmDayHr(e.target.value)}
+                                className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-amber-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-1">Tlaková zátěž přes den (%)</label>
+                            <input
+                              type="number"
+                              value={abpmDayLoad}
+                              onChange={(e) => setAbpmDayLoad(e.target.value)}
+                              className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* NOČNÍ HODNOTY */}
+                        <div className="space-y-3 bg-indigo-50/70 p-4.5 rounded-xl border border-indigo-200">
+                          <span className="text-xs font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                            🌙 NOČNÍ FÁZE (SPÁNEK: 22:00 – 06:00)
+                          </span>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">ST (mmHg)</label>
+                              <input
+                                type="number"
+                                value={abpmNightSys}
+                                onChange={(e) => setAbpmNightSys(e.target.value)}
+                                className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">DT (mmHg)</label>
+                              <input
+                                type="number"
+                                value={abpmNightDia}
+                                onChange={(e) => setAbpmNightDia(e.target.value)}
+                                className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-600 mb-1">Puls (/min)</label>
+                              <input
+                                type="number"
+                                value={abpmNightHr}
+                                onChange={(e) => setAbpmNightHr(e.target.value)}
+                                className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-xs font-bold text-center focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-1">Tlaková zátěž v noci (%)</label>
+                            <input
+                              type="number"
+                              value={abpmNightLoad}
+                              onChange={(e) => setAbpmNightLoad(e.target.value)}
+                              className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* POZNÁMKY K PRŮBĚHU */}
+                        <div className="space-y-3 bg-white p-4.5 rounded-xl border border-gray-200">
+                          <span className="text-xs font-bold uppercase tracking-wider text-gray-700 block">
+                            📝 Poznámky k průběhu zápůjčky
+                          </span>
+                          <textarea
+                            rows={4}
+                            value={abpmNotes}
+                            onChange={(e) => setAbpmNotes(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-red-500"
+                            placeholder="Zapište snášenlivost, subjektivní pocity pacienta, rušivé vlivy..."
+                          />
+                        </div>
+                      </div>
+
+                      {/* VÝSLEDNÉ KLINICKÉ KARTY */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Průměr 24 Hodin</span>
+                          <div className="text-xl font-black text-gray-900 mt-1">{avg24Sys} / {avg24Dia} <span className="text-xs font-normal text-gray-500">mmHg</span></div>
+                          <span className="text-[10px] text-gray-500 block mt-1">Průměrný puls: {avg24Hr} /min</span>
+                        </div>
+
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Průměr Den (Bdění)</span>
+                          <div className="text-xl font-black text-amber-950 mt-1">{dSys} / {dDia} <span className="text-xs font-normal text-amber-700">mmHg</span></div>
+                          <span className="text-[10px] text-amber-700 block mt-1">Pulzní tlak: {ppDay} mmHg | Zátěž: {abpmDayLoad}%</span>
+                        </div>
+
+                        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-800 block">Průměr Noc (Spánek)</span>
+                          <div className="text-xl font-black text-indigo-950 mt-1">{nSys} / {nDia} <span className="text-xs font-normal text-indigo-700">mmHg</span></div>
+                          <span className="text-[10px] text-indigo-700 block mt-1">Pulzní tlak: {ppNight} mmHg | Zátěž: {abpmNightLoad}%</span>
+                        </div>
+
+                        <div className={`p-4 rounded-2xl border text-center flex flex-col justify-center ${dipperColor}`}>
+                          <span className="text-[10px] font-bold uppercase tracking-wider block">Dipper Status (Noční pokles)</span>
+                          <div className="text-xl font-black mt-1">-{dipSysPercent} %</div>
+                          <span className="text-[10px] font-semibold block mt-1 truncate" title={dipperCategory}>{dipperCategory}</span>
+                        </div>
+
+                      </div>
+
+                      {/* GRAF 24H PRŮBĚHU TLAKU */}
+                      <div className="p-6 bg-white border border-gray-200 rounded-2xl space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+                            <LineChart className="w-4 h-4 text-red-600" /> 24-hodinová hemodynamická křivka (Systola, Diastola, Puls)
+                          </h3>
+                          <div className="flex gap-4 text-[11px] font-semibold">
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-full inline-block"></span> Systola</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-blue-500 rounded-full inline-block"></span> Diastola</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-500 rounded-full inline-block"></span> Puls</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-indigo-100 border border-indigo-300 rounded inline-block"></span> Noční fáze</span>
+                          </div>
+                        </div>
+
+                        <div className="h-64 w-full bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-end justify-between gap-1 relative overflow-hidden">
+                          {abpmGraphPoints.map((pt, idx) => {
+                            const sysHeight = Math.min(100, Math.max(10, ((pt.sys - 50) / 130) * 100));
+                            const diaHeight = Math.min(100, Math.max(10, ((pt.dia - 40) / 130) * 100));
+                            return (
+                              <div 
+                                key={idx} 
+                                className={`flex-1 h-full flex flex-col justify-end items-center relative z-10 p-1 rounded-t-lg transition-colors ${
+                                  pt.isNight ? "bg-indigo-100/60 border-x border-indigo-200/40" : ""
+                                }`}
+                              >
+                                <div className="w-full flex justify-center items-end gap-1 h-48">
+                                  <div 
+                                    style={{ height: `${sysHeight}%` }} 
+                                    className="w-2.5 bg-red-500 rounded-t-sm shadow-sm hover:bg-red-600 transition-all relative group"
+                                  >
+                                    <span className="hidden group-hover:block absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] px-1.5 py-0.5 rounded font-bold z-30">
+                                      {pt.sys}
+                                    </span>
+                                  </div>
+                                  <div 
+                                    style={{ height: `${diaHeight}%` }} 
+                                    className="w-2.5 bg-blue-500 rounded-t-sm shadow-sm hover:bg-blue-600 transition-all relative group"
+                                  >
+                                    <span className="hidden group-hover:block absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] px-1.5 py-0.5 rounded font-bold z-30">
+                                      {pt.dia}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-mono text-gray-600 mt-2 font-bold">{pt.time}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* KLINICKÝ ZÁVĚR & TLAČÍTKO PRO VKLAD DO DEKURZU */}
+                      <div className="p-6 bg-red-50/40 border border-red-200 rounded-2xl space-y-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-red-900 flex items-center gap-2">
+                          <Stethoscope className="w-4 h-4 text-red-600" /> Syntéza & Návrh lékařského závěru pro dekurz
+                        </h3>
+
+                        <div className="bg-white p-4 rounded-xl border border-red-200 text-xs leading-relaxed text-gray-800 font-mono shadow-sm">
+                          <strong>SOUHRN ABPM:</strong> 24h monitorování krevního tlaku prokázalo průměrné hodnoty {avg24Sys}/{avg24Dia} mmHg (přes den {dSys}/{dDia} mmHg, v noci {nSys}/{nDia} mmHg). 
+                          Tlaková zátěž přes den činí {abpmDayLoad} %, v noci {abpmNightLoad} %. 
+                          Noční pokles systolického tlaku dosahuje {dipSysPercent} % – hodnoceno jako <strong>{dipperCategory}</strong>. 
+                          {abpmNotes && ` Poznamka: ${abpmNotes}`}
+                        </div>
+
+                        <div className="flex justify-end print:hidden">
+                          <button
+                            onClick={() => {
+                              const summaryText = `24h ABPM: Průměr ${avg24Sys}/${avg24Dia} mmHg (Den: ${dSys}/${dDia}, Noc: ${nSys}/${nDia}). Dipper status: ${dipperCategory} (pokles ${dipSysPercent}%). Tlaková zátěž: den ${abpmDayLoad}%, noc ${abpmNightLoad}%. ${abpmNotes}`;
+                              setCurrentReport(prev => ({ 
+                                ...prev, 
+                                bp: `${dSys}/${dDia}`,
+                                pulse: `${dHr}`,
+                                abpm_summary: summaryText 
+                              }));
+                              setActiveTab("reports");
+                              alert("Výsledky ABPM byly vloženy do rozpracovaného dekurzu!");
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-3 rounded-xl text-xs transition-colors shadow-md flex items-center gap-2"
+                          >
+                            <FilePlus className="w-4 h-4" /> Vložit tyto výsledky ABPM do dekurzu ({selectedPatient.name}) ➔
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Vyberte prosím pacienta v horní liště.</p>
+                  )}
+
+                </div>
+              </div>
+            )}
+
             {activeTab === "calculator" && (
               <div className="space-y-6 max-w-5xl mx-auto font-sans">
                 <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl relative overflow-hidden">
@@ -2840,7 +3224,6 @@ export default function Home() {
                             <div className="overflow-hidden">
                               <h4 className="text-xs font-bold text-gray-900 truncate" title={doc.title}>{doc.title}</h4>
                               <span className="text-[10px] text-gray-400 block mt-0.5">Velikost: {doc.file_size || "Neznámá"}</span>
-                              <span className="text-[10px] text-teal-700 block">Nahral: {doc.uploaded_by || "Admin"}</span>
                             </div>
                           </div>
 
@@ -3082,14 +3465,14 @@ export default function Home() {
                   </div>
 
                   <div className="mb-5">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-800 mb-1 border-b border-teal-200 pb-1">
-                      IV. Diagnostická vyšetření & ABPM
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-800 mb-1 border-b border-teal-200 pb-1 flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-red-600" /> IV. Diagnostická vyšetření & ABPM (Holter)
                     </h3>
                     <textarea
-                      rows={2}
+                      rows={3}
                       value={currentReport.abpm_summary}
                       onChange={(e) => setCurrentReport({...currentReport, abpm_summary: e.target.value})}
-                      className="w-full text-xs text-gray-800 leading-relaxed bg-transparent focus:outline-none resize-y"
+                      className="w-full text-xs text-gray-800 leading-relaxed bg-transparent focus:outline-none resize-y font-mono"
                     />
                   </div>
 
