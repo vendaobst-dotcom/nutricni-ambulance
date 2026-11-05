@@ -55,7 +55,8 @@ import {
   FolderPlus,
   TrendingUp,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
+  Calculator
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -168,7 +169,7 @@ interface AuditLog {
 export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
-   
+    
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -199,7 +200,7 @@ export default function Home() {
   const [modalTab, setModalTab] = useState<"personal" | "nutritional">("personal");
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  
+   
   const [formErrors, setFormErrors] = useState<{ [key: string]: boolean }>({});
   const [formErrorMsg, setFormErrorMsg] = useState("");
 
@@ -269,6 +270,15 @@ export default function Home() {
     nutritional_plan: "",
     conclusion: ""
   });
+
+  // Stavy pro Nutriční Kalkulačku
+  const [calcGender, setCalcGender] = useState<"Muž" | "Žena">("Muž");
+  const [calcAge, setCalcAge] = useState<string>("30");
+  const [calcWeight, setCalcWeight] = useState<string>("70");
+  const [calcHeight, setCalcHeight] = useState<string>("175");
+  const [calcBodyFat, setCalcBodyFat] = useState<string>("");
+  const [calcActivity, setCalcActivity] = useState<number>(1.375);
+  const [calcGoal, setCalcGoal] = useState<number>(0); // 0 = Udržování, negative = redukce, positive = nabírání
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -526,7 +536,7 @@ export default function Home() {
       fetchPatientReports(selectedPatientId);
       fetchPatientTasks(selectedPatientId);
       setCurrentReport(prev => ({ ...prev, patient_id: selectedPatientId, id: undefined }));
-       
+        
       const p = patients.find(pat => pat.id === selectedPatientId);
       if (p) {
         setReceiptPatientName(p.name);
@@ -696,7 +706,7 @@ export default function Home() {
     const today = new Date();
     const currentDay = String(today.getDate()).padStart(2, '0');
     const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-     
+      
     const cleanStr = birthDateStr.trim();
     if (cleanStr.includes('.')) {
       const parts = cleanStr.split('.');
@@ -1006,7 +1016,7 @@ export default function Home() {
       if (!confirmDelete) return;
     } else {
       const userInput = window.prompt(
-        `⚠️ POZOR: Chystáte se smazat SKUTEČNÉHO PACIENTA "${patient.name}"!\n\nPro potvrzení opište slovo "SMAZAT":`
+        `⚠ POZOR: Chystáte se smazat SKUTEČNÉHO PACIENTA "${patient.name}"!\n\nPro potvrzení opište slovo "SMAZAT":`
       );
       if (userInput !== "SMAZAT") {
         alert("Smazání zrušeno. Heslo nesouhlasí.");
@@ -1107,7 +1117,7 @@ export default function Home() {
         .from("patient_reports")
         .insert([reportDataPayload])
         .select();
-       
+        
       error = insertError;
       if (!insertError && insertedData && insertedData[0]) {
         setCurrentReport(insertedData[0]);
@@ -1179,6 +1189,41 @@ export default function Home() {
   const weightNum = parseFloat(currentReport.weight) || 0;
   const heightNum = (parseFloat(currentReport.height) || 0) / 100;
   const bmi = heightNum > 0 ? (weightNum / (heightNum * heightNum)).toFixed(1) : "—";
+
+  // Výpočty pro Nutriční Kalkulačku
+  const cWeight = parseFloat(calcWeight) || 0;
+  const cHeight = parseFloat(calcHeight) || 0;
+  const cAge = parseFloat(calcAge) || 0;
+  const cFat = parseFloat(calcBodyFat) || 0;
+
+  // BMR Mifflin-St Jeor
+  let bmrMifflin = 0;
+  if (cWeight > 0 && cHeight > 0 && cAge > 0) {
+    if (calcGender === "Muž") {
+      bmrMifflin = 10 * cWeight + 6.25 * cHeight - 5 * cAge + 5;
+    } else {
+      bmrMifflin = 10 * cWeight + 6.25 * cHeight - 5 * cAge - 161;
+    }
+  }
+
+  // BMR Katch-McArdle (pokud je znám tuk %)
+  let bmrKatch = 0;
+  if (cWeight > 0 && cFat > 0) {
+    const lbm = cWeight * (1 - cFat / 100);
+    bmrKatch = 370 + 21.6 * lbm;
+  }
+
+  const activeBmr = bmrKatch > 0 ? bmrKatch : bmrMifflin;
+  const tdee = activeBmr * calcActivity;
+  const targetCalories = tdee + calcGoal;
+
+  // Makroživiny: Bílkoviny ~ 2g/kg, Tuky ~ 25% kalorií, Sacharidy zbytek
+  const calcProteinsGrams = Math.round(cWeight * 2.0);
+  const calcProteinsKcal = calcProteinsGrams * 4;
+  const calcFatsKcal = Math.round(targetCalories * 0.25);
+  const calcFatsGrams = Math.round(calcFatsKcal / 9);
+  const calcCarbsKcal = Math.max(0, targetCalories - calcProteinsKcal - calcFatsKcal);
+  const calcCarbsGrams = Math.round(calcCarbsKcal / 4);
 
   const handlePrint = () => {
     logAction("TISK", `Vytištěn dokument / zpráva.`);
@@ -1350,7 +1395,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ZDE UPRAVENO: Přidán responsive kontejner w-full px-4 sm:px-6 lg:px-8 py-8 */}
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0 print:max-w-none">
          
         {birthdayPatients.length > 0 && (
@@ -1390,6 +1434,16 @@ export default function Home() {
             }`}
           >
             <Users className="w-4 h-4" /> Kartotéka Pacientů
+          </button>
+          <button
+            onClick={() => { setActiveTab("calculator"); setViewingPatientId(null); }}
+            className={`flex items-center gap-2 pb-3 px-4 font-semibold text-sm transition-all border-b-2 rounded-t-xl ${
+              activeTab === "calculator"
+                ? "border-[#0D9488] text-[#0D9488] bg-teal-50/30"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            <Calculator className="w-4 h-4" /> Nutriční Kalkulačka
           </button>
           <button
             onClick={() => { setActiveTab("hours"); setViewingPatientId(null); }}
@@ -1666,7 +1720,189 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {/* ZÁLOŽKA: ORDINAČNÍ HODINY */}
+            {activeTab === "calculator" && (
+              <div className="space-y-6 max-w-5xl mx-auto font-sans">
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl relative overflow-hidden">
+                  <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+                    <div className="p-3 bg-teal-100 text-[#0D9488] rounded-2xl">
+                      <Calculator className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Klinická Nutriční Kalkulačka</h2>
+                      <p className="text-xs text-gray-500">Výpočet Bazálního Metabolizmu (BMR), TDEE a doporučených makroživin</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                    <div className="md:col-span-5 space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">Vstupní parametry pacienta</h3>
+                      
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Pohlaví</label>
+                        <div className="flex bg-white p-1 rounded-xl border border-gray-300">
+                          <button
+                            type="button"
+                            onClick={() => setCalcGender("Muž")}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${calcGender === "Muž" ? "bg-[#0D9488] text-white" : "text-gray-600 hover:text-gray-900"}`}
+                          >
+                            Muž
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCalcGender("Žena")}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${calcGender === "Žena" ? "bg-[#0D9488] text-white" : "text-gray-600 hover:text-gray-900"}`}
+                          >
+                            Žena
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Věk (roky)</label>
+                          <input
+                            type="number"
+                            value={calcAge}
+                            onChange={(e) => setCalcAge(e.target.value)}
+                            className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:ring-2 focus:ring-[#0D9488]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Tělesný tuk (%)</label>
+                          <input
+                            type="number"
+                            placeholder="Volitelné"
+                            value={calcBodyFat}
+                            onChange={(e) => setCalcBodyFat(e.target.value)}
+                            className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:ring-2 focus:ring-[#0D9488]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Hmotnost (kg)</label>
+                          <input
+                            type="number"
+                            value={calcWeight}
+                            onChange={(e) => setCalcWeight(e.target.value)}
+                            className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:ring-2 focus:ring-[#0D9488]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Výška (cm)</label>
+                          <input
+                            type="number"
+                            value={calcHeight}
+                            onChange={(e) => setCalcHeight(e.target.value)}
+                            className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:ring-2 focus:ring-[#0D9488]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Pohybová aktivita (PAL)</label>
+                        <select
+                          value={calcActivity}
+                          onChange={(e) => setCalcActivity(parseFloat(e.target.value))}
+                          className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-medium text-gray-900 focus:ring-2 focus:ring-[#0D9488]"
+                        >
+                          <option value={1.2}>Sedavé zam. / Minimální pohyb (1.2)</option>
+                          <option value={1.375}>Lehká aktivita 1-3x týdně (1.375)</option>
+                          <option value={1.55}>Střední aktivita 3-5x týdně (1.55)</option>
+                          <option value={1.725}>Vysoká aktivita 6-7x týdně (1.725)</option>
+                          <option value={1.9}>Extrémní fyzická zátěž (1.9)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Cíl terapie</label>
+                        <select
+                          value={calcGoal}
+                          onChange={(e) => setCalcGoal(parseInt(e.target.value))}
+                          className="w-full bg-white border border-gray-300 rounded-xl p-2.5 text-xs font-bold text-teal-900 focus:ring-2 focus:ring-[#0D9488]"
+                        >
+                          <option value={-500}>Redukce hmotnosti (Deficit -500 kcal)</option>
+                          <option value={-300}>Mírná redukce (Deficit -300 kcal)</option>
+                          <option value={0}>Udržování hmotnosti (0 kcal)</option>
+                          <option value={300}>Mírné nabírání (Přebytek +300 kcal)</option>
+                          <option value={500}>Intenzivní nabírání (Přebytek +500 kcal)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-7 space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-teal-50 border border-teal-200 rounded-2xl">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 block">Bazální metabolizmus (BMR)</span>
+                          <div className="text-2xl font-black text-teal-950 mt-1">{Math.round(activeBmr)} <span className="text-sm font-normal">kcal/den</span></div>
+                          <span className="text-[10px] text-teal-600 block mt-1">
+                            {bmrKatch > 0 ? "Vypočteno dle Katch-McArdle (LBM)" : "Vypočteno dle Mifflin-St Jeor"}
+                          </span>
+                        </div>
+
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block">Celkový výdej (TDEE)</span>
+                          <div className="text-2xl font-black text-blue-950 mt-1">{Math.round(tdee)} <span className="text-sm font-normal">kcal/den</span></div>
+                          <span className="text-[10px] text-blue-600 block mt-1">S ohledem na vybraný stupeň PAL</span>
+                        </div>
+                      </div>
+
+                      <div className="p-5 bg-gradient-to-br from-teal-900 to-gray-900 text-white rounded-2xl shadow-lg">
+                        <span className="text-xs uppercase font-bold tracking-wider text-teal-400 block mb-1">Doporučený Cílový Příjem</span>
+                        <div className="text-3xl font-black text-white">{Math.round(targetCalories)} <span className="text-sm font-normal text-teal-300">kcal/den</span></div>
+                        <p className="text-xs text-gray-300 mt-2">
+                          Nastavený cíl: <strong>{calcGoal > 0 ? `+${calcGoal} kcal` : `${calcGoal} kcal`}</strong> oproti udržovacímu příjmu TDEE.
+                        </p>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-2xl p-5 bg-white space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+                          <Apple className="w-4 h-4 text-[#0D9488]" /> Doporučené rozložení makroživin
+                        </h4>
+                        
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase text-emerald-800 block">Bílkoviny</span>
+                            <div className="text-lg font-black text-emerald-950 mt-1">{calcProteinsGrams} g</div>
+                            <span className="text-[10px] text-emerald-600 block">({calcProteinsKcal} kcal)</span>
+                          </div>
+
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase text-amber-800 block">Tuky</span>
+                            <div className="text-lg font-black text-amber-950 mt-1">{calcFatsGrams} g</div>
+                            <span className="text-[10px] text-amber-600 block">({calcFatsKcal} kcal)</span>
+                          </div>
+
+                          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                            <span className="text-[10px] font-bold uppercase text-purple-800 block">Sacharidy</span>
+                            <div className="text-lg font-black text-purple-950 mt-1">{calcCarbsGrams} g</div>
+                            <span className="text-[10px] text-purple-600 block">({calcCarbsKcal} kcal)</span>
+                          </div>
+                        </div>
+
+                        {selectedPatient && (
+                          <div className="pt-3 border-t border-gray-100 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const formattedPlan = `DOPORUČENÝ ENERGETICKÝ PŘÍJEM: ${Math.round(targetCalories)} kcal/den\n- Bílkoviny: ${calcProteinsGrams}g (${calcProteinsKcal} kcal)\n- Tuky: ${calcFatsGrams}g (${calcFatsKcal} kcal)\n- Sacharidy: ${calcCarbsGrams}g (${calcCarbsKcal} kcal)\n- Bazální metabolizmus (BMR): ${Math.round(activeBmr)} kcal\n- Celkový denní výdej (TDEE): ${Math.round(tdee)} kcal`;
+                                setCurrentReport(prev => ({ ...prev, nutritional_plan: formattedPlan }));
+                                setActiveTab("reports");
+                              }}
+                              className="bg-[#0D9488] hover:bg-teal-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition-colors shadow-sm flex items-center gap-1.5"
+                            >
+                              <FilePlus className="w-4 h-4" /> Vložit tyto hodnoty do dekurzu ({selectedPatient.name})
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === "hours" && (
               <div className="space-y-6 max-w-4xl mx-auto font-sans">
                 <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl relative overflow-hidden">
@@ -1816,7 +2052,10 @@ export default function Home() {
                           return (
                             <tr 
                               key={patient.id} 
-                              onClick={() => setViewingPatientId(patient.id)}
+                              onClick={() => {
+                                setViewingPatientId(patient.id);
+                                setSelectedPatientId(patient.id);
+                              }}
                               className={`cursor-pointer transition-colors ${isBday ? "bg-pink-50/60 hover:bg-pink-100/50" : "hover:bg-teal-50/40"}`}
                             >
                               <td className="p-4.5 font-semibold text-gray-900">
@@ -1852,6 +2091,7 @@ export default function Home() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setViewingPatientId(patient.id);
+                                      setSelectedPatientId(patient.id);
                                     }}
                                     className="text-teal-700 hover:text-teal-900 font-semibold text-xs inline-flex items-center gap-1 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-xl border border-teal-200 transition-colors"
                                   >
@@ -2405,7 +2645,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="lg:col-span-8 bg-white p-12 rounded-2xl border border-gray-300 shadow-xl font-sans print:shadow-none print:border-none print:p-0">
+                <div className="lg:col-span-8 bg-white p-12 rounded-2xl border border-gray-300 shadow-xl font-sans print:shadow-none print:border-none print:p-0 print:w-full">
                    
                   <div className="border-b-2 border-gray-900 pb-6 mb-6 flex justify-between items-start">
                     <div>
@@ -2721,7 +2961,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="lg:col-span-8 bg-white p-12 rounded-2xl border border-gray-300 shadow-xl font-sans print:shadow-none print:border-none print:p-0">
+                <div className="lg:col-span-8 bg-white p-12 rounded-2xl border border-gray-300 shadow-xl font-sans print:shadow-none print:border-none print:p-0 print:w-full">
                    
                   <div className="border-b-2 border-gray-900 pb-5 mb-6 flex justify-between items-start">
                     <div>
@@ -2855,7 +3095,7 @@ export default function Home() {
 
                   <div className="mb-5">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-teal-800 mb-1 border-b border-teal-200 pb-1">
-                      V. Nutriční terapeitický plán & Jídelníček
+                      V. Nutriční terapeutický plán & Jídelníček
                     </h3>
                     <textarea
                       rows={5}
@@ -3161,9 +3401,8 @@ export default function Home() {
                   {modalTab === "personal" ? (
                     <button
                       type="button"
-                      onClick={() => setModalTab("personal")}
+                      onClick={() => setModalTab("nutritional")}
                       className="px-5 py-2 text-sm font-semibold bg-[#0D9488] hover:bg-teal-700 text-white rounded-xl shadow-md transition-colors"
-                      onClickCapture={() => setModalTab("nutritional")}
                     >
                       Další: Nutriční profil →
                     </button>
